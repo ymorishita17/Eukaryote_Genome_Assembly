@@ -1,0 +1,9 @@
+#SRAtoolsを用いてデータを取得する
+prefetch ERR2092776
+fastq-dump --split-files ERR2092776
+
+#sraファイルは重いので、下記のコマンドで削除しておく
+rm ~/ncbi/public/sra/*
+
+#データの確認
+Downloads/bbmap/stats.sh ERR2092776_1.fastq

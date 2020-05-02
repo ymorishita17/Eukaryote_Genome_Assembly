@@ -1,0 +1,101 @@
+#installing required software, firstly by setting up homebrew
+/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+brew install python
+
+# at this point, you might want to check the installed location of python
+which pip3
+# if this is not /usr/local/bin/pip3 you probably already have custom python installed.
+# in that case, replace the "pip3" of the following with /usr/local/bin/pip3
+pip3 install --upgrade setuptools
+pip3 install --upgrade pip
+pip3 install nanopack
+
+brew install bwa
+brew install samtools
+brew install wget
+
+#install jellyfish
+wget https://github.com/gmarcais/Jellyfish/releases/download/v1.1.12/jellyfish-macosx
+chmod 755 jellyfish-macosx
+
+#install BBTools
+curl -L https://sourceforge.net/projects/bbmap/files/latest/download -o bbtools.tar.gz
+tar -xzvf bbtools.tar.gz
+
+#install pilon
+wget https://github.com/broadinstitute/pilon/releases/download/v1.23/pilon-1.23.jar
+
+#rehash the software paths
+hash -r
+
+#at this stage, download a FASTQ file from NCBI SRA or EBI ENA https://www.ebi.ac.uk/ena
+
+#print out statistics for a given FASTQ with BBmap
+#replace the following "ERR2092776.fastq" with desired FASTQ (or could also be FASTA) file
+bbmap/stats.sh ERR2092776.fastq 
+
+#Estimate the genome size using jellyfish 
+#replace the following "ERR2092776.fastq" with desired FASTQ file
+
+jellyfish-macosx count -C -m 21 -s 1000000000 -t 4 ERR2092781.fastq -o reads.jf
+jellyfish-macosx histo -t 4 reads.jf_0 > reads.histo
+
+#upload the resulting reads.histo at http://qb.cshl.edu/genomescope/ to calculate the genome size estimate
+
+#Visualizing long read quality using Nanopack
+#replace the following "ERR2092776.fastq" with desired FASTQ file
+NanoPlot -t 2 --fastq ERR2092776.fastq 
+
+#Filter FASTQ to only keep reads above 10,000bp
+#Replace "10000" for desired length, and "input.fastq" for desired input FASTQ file
+awk 'BEGIN {OFS = "\n"} {header = $0 ; getline seq ; getline qheader ; getline qseq ; if (length(seq) >= 10000 ) {print header, seq, qheader, qseq}}' < input.fastq > filtered-10000.fastq
+
+#Assembly with Canu
+#First download and install Canu
+wget https://github.com/marbl/canu/releases/download/v1.8/canu-1.8.Darwin-amd64.tar.xz
+tar xf canu-1.8.Darwin-amd64.tar.xz 
+
+#Now assemble
+#replace the following "ERR2092776.fastq" with desired FASTQ file
+#modify genomeSize and maxThreads options to match your genome and number of CPU cores, respectively
+#WARINING: This process will take weeks to finish for eukaryotic genomes
+canu-1.8/Darwin-amd64/bin/canu -nanopore-raw ~/ERR2092776.fastq -d canu -p canu genomeSize=100m maxThreads=4
+
+#print the statistics for the assembly
+bbmap/stats.sh canu/canu.contigs.fasta 
+
+#Alternative assembly with wtdbg2
+#CAUTION: This will not work on a Mac. Use a Linux machine. Firstly download and compile.
+git clone https://github.com/ruanjue/wtdbg2
+cd wtdbg2 && make
+
+#Now assemble
+#replace the following "ERR2092776.fastq" with desired FASTQ file, modify -t to match the number of CPU cores.
+wtdbg2/wtdbg2 -t 32 -i ERR2092776.fastq -fo worm.wtdbg2
+wtpoa-cns -t 32 -i worm.wtdbg2.ctg.lay.gz -fo worm.wtdbg2.fa
+
+#print the statistics for the assembly
+bbmap/stats.sh worm.wtdbg2.fa 
+
+#Now check the quality of assembly using BUSCO completeness, through gVolante server https://gvolante.riken.jp/analysis.html
+
+#Error correction. Download a desired Illumina FASTQ files from ENA or SRA as described previously.
+#Here we assume the file to be ERR2092781.fastq, but replace the filename to match your needs.
+bwa index worm.wtdbg2.fa
+bwa mem -t 4  worm.wtdbg2.fa ERR2092781.fastq |samtools view -@ 4 -b -o aln.bam - 
+samtools sort -T sort.tmp -o aln.sorted.bam -@ 4 aln.bam
+samtools index aln.sorted.bam
+
+java -Xms14g -jar pilon-1.23.jar --genome worm.wtdbg2.fa --bam aln.sorted.bam --threads 4 --output worm.pilon
+
+#Check again on gVolante for improved BUSCO completeness scores. Multiple rounds of pilon can be run, as long as there is an increase in the BUSCO completeness.
+
+#Validating the assembly. This is done with a reference genome sequence. Here we test with C. elegans genome.
+wget ftp://ftp.wormbase.org/pub/wormbase/releases/current-production-release/species/c_elegans/PRJNA13758/c_elegans.PRJNA13758.WS268.genomic.fa.gz
+gunzip c_elegans.PRJNA13758.WS268.genomic.fa.gz
+
+#Now upload the reference as well as the assembly to http://dgenies.toulouse.inra.fr/ to performa dot plot
+
+
+
+

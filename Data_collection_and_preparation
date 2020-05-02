@@ -6,4 +6,15 @@ fastq-dump --split-files ERR2092776
 rm ~/ncbi/public/sra/*
 
 #データの確認
-Downloads/bbmap/stats.sh ERR2092776_1.fastq
+#bbmapの場所を指定して/stats.shとする
+~/deNovo/bbmap/stats.sh ERR2092776_1.fastq
+
+#ゲノムサイズの推定
+ #ゲノムサイズ未知のとき→ショートリード配列を用いて，k-merの分布からゲノムサイズの推定が可能．
+./jellyfish-macosx count -C -m 21 -s 1000000000 -t 4 ERR2092781_1.fastq -o reads.jf
+./jellyfish-macosx histo -t 4 reads.jf_0 > reads.histo
+
+#GenomeScopeを用いてread.histo ファイルを開く
+
+#データの可視化
+NanoPlot -t 2 --fastq ERR2092776_1.fastq
